@@ -1,0 +1,15 @@
+# Never commit your real API key
+.env
+.env.*
+!.env.example
+
+# Local Python environment and caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Local editor / tool settings
+.claude/
+.vscode/
+.idea/

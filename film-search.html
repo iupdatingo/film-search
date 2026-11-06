@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Film Search</title>
+  <style>
+    :root {
+      --bg: #0f1115; --panel: #181b22; --panel2: #20242d; --text: #e8e9ec;
+      --muted: #9aa0ab; --accent: #f5c518; --border: #2b303b; --error: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+           background: var(--bg); color: var(--text); }
+    header { padding: 32px 16px 16px; text-align: center; }
+    h1 { margin: 0 0 16px; font-size: 2rem; }
+    h1 span { color: var(--accent); }
+    form { display: flex; gap: 8px; max-width: 640px; margin: 0 auto; }
+    .search-box { position: relative; flex: 1; }
+    input { width: 100%; padding: 12px 14px; font-size: 1rem; border-radius: 8px;
+            border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+    input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    button { padding: 12px 20px; font-size: 1rem; font-weight: 600; border: 0; border-radius: 8px;
+             background: var(--accent); color: #111; cursor: pointer; }
+    button:hover { filter: brightness(1.1); }
+    button.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+
+    /* Type-ahead suggestions */
+    .suggest { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 10; margin: 0; padding: 4px;
+               list-style: none; text-align: left; background: var(--panel); border: 1px solid var(--border);
+               border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.5); max-height: 420px; overflow: auto; }
+    .suggest li { display: flex; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+    .suggest li[aria-selected="true"], .suggest li:hover { background: var(--panel2); }
+    .suggest img, .suggest .ph { width: 34px; height: 51px; object-fit: cover; border-radius: 4px;
+                                 background: var(--panel2); flex: none; }
+    .suggest .t { font-weight: 600; font-size: .95rem; }
+    .suggest .s { color: var(--muted); font-size: .8rem; }
+    .suggest .hint { color: var(--muted); font-size: .8rem; padding: 8px; cursor: default; }
+    .suggest .hint:hover { background: none; }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    .status { text-align: center; color: var(--muted); }
+    .status.error { color: var(--error); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+            overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; }
+    .card:hover, .card:focus { transform: translateY(-3px); border-color: var(--accent); outline: none; }
+    .card img, .card .noimg { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block;
+            background: var(--panel2); }
+    .card .noimg { display: grid; place-items: center; color: var(--muted); font-size: .9rem; }
+    .card .meta { padding: 10px; }
+    .card .title { font-weight: 600; font-size: .95rem; line-height: 1.25; }
+    .card .sub { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+    .more { display: block; margin: 24px auto 0; }
+
+    /* Detail modal */
+    dialog { width: min(980px, 100% - 32px); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--border);
+             border-radius: 12px; background: var(--panel); color: var(--text); overflow: auto; }
+    dialog::backdrop { background: rgba(0,0,0,.75); }
+    .close { position: sticky; top: 8px; float: right; margin: 8px; background: var(--panel2);
+             color: var(--text); padding: 6px 12px; z-index: 2; }
+    .video { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; }
+    .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .backdrop { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
+    .detail { display: grid; grid-template-columns: 200px 1fr; gap: 20px; padding: 20px; }
+    .detail > div > img { width: 100%; border-radius: 8px; }
+    .detail h2 { margin: 0; }
+    .tagline { color: var(--muted); font-style: italic; margin: 4px 0 12px; }
+    .facts { color: var(--muted); font-size: .9rem; margin: 8px 0 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .cert { border: 1px solid var(--muted); border-radius: 4px; padding: 0 6px; color: var(--text); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .chip { background: var(--panel2); border: 1px solid var(--border); padding: 3px 10px;
+            border-radius: 999px; font-size: .8rem; }
+    .info { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 20px; margin-top: 8px; }
+    .label { color: var(--muted); font-size: .8rem; margin-top: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .links a { color: var(--text); text-decoration: none; background: var(--panel2);
+               border: 1px solid var(--border); padding: 8px 14px; border-radius: 8px; font-size: .9rem; }
+    .links a:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Cast and suggestion rows (horizontal scrollers) */
+    section.row { padding: 0 20px 20px; }
+    section.row h3 { margin: 8px 0 10px; font-size: 1.05rem; }
+    .scroller { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
+    .scroller > * { flex: 0 0 120px; scroll-snap-align: start; }
+    .person { text-align: center; font-size: .85rem; }
+    .person img, .person .ph { width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 8px; background: var(--panel2); display: block; }
+    .person .n { font-weight: 600; margin-top: 6px; }
+    .person .r { color: var(--muted); font-size: .8rem; }
+    .scroller .card .meta { padding: 8px; }
+    .scroller .card .title { font-size: .85rem; }
+    .scroller .card .sub { font-size: .8rem; }
+
+    footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 24px 16px; }
+    footer a { color: var(--muted); }
+    @media (max-width: 640px) {
+      .detail { grid-template-columns: 1fr; }
+      .detail > div > img { max-width: 180px; }
+      form { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎬 Film <span>Search</span></h1>
+    <form id="searchForm" role="search">
+      <div class="search-box">
+        <input id="searchInput" type="search" placeholder="Search for a film, e.g. Inception" autocomplete="off" autofocus
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestList" aria-label="Film title">
+        <ul id="suggestList" class="suggest" role="listbox" hidden></ul>
+      </div>
+      <button type="submit">Search</button>
+    </form>
+  </header>
+
+  <main>
+    <p id="status" class="status" role="status"></p>
+    <div id="results" class="grid"></div>
+    <button id="moreBtn" class="secondary more" hidden>Load more</button>
+  </main>
+
+  <dialog id="detailDialog" aria-label="Film details">
+    <button class="close" id="closeBtn" aria-label="Close">✕ Close</button>
+    <div id="detailBody"></div>
+  </dialog>
+
+  <footer>
+    Metadata provided by <a href="https://www.thetvdb.com/" target="_blank" rel="noopener">TheTVDB</a>.
+    Please consider <a href="https://www.thetvdb.com/subscribe" target="_blank" rel="noopener">supporting them</a>.
+  </footer>
+
+  <script>
+    // The API key lives only on the server (server.py reads it from an environment variable).
+    // The browser only talks to our own backend at /api/...
+    const API = "/api";
+
+    const $ = (id) => document.getElementById(id);
+    const status = $("status"), results = $("results"), moreBtn = $("moreBtn");
+    const input = $("searchInput"), suggestList = $("suggestList");
+    const dialog = $("detailDialog"), detailBody = $("detailBody");
+
+    // Escape text before inserting into HTML to avoid injection from API data.
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    async function getJSON(url, signal) {
+      const res = await fetch(url, { signal });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      return data;
+    }
+
+    function setStatus(msg, isError = false) {
+      status.textContent = msg;
+      status.className = "status" + (isError ? " error" : "");
+    }
+
+    const LANGS = { eng: "English", fra: "French", spa: "Spanish", deu: "German", ita: "Italian", jpn: "Japanese",
+      kor: "Korean", zho: "Chinese", hin: "Hindi", por: "Portuguese", rus: "Russian", swe: "Swedish", dan: "Danish",
+      nor: "Norwegian", nld: "Dutch", tur: "Turkish", ara: "Arabic", pol: "Polish", tha: "Thai", fas: "Persian" };
+
+    // A poster card. Used for search results and for the suggestion rows.
+    const card = (m, sub) => `
+      <div class="card" tabindex="0" role="button" data-id="${esc(m.id)}" aria-label="${esc(m.title)} ${esc(m.year)}">
+        ${m.poster ? `<img src="${esc(m.poster)}" alt="" loading="lazy">` : `<div class="noimg">No poster</div>`}
+        <div class="meta">
+          <div class="title">${esc(m.title)}</div>
+          <div class="sub">${esc(sub ?? (m.year || "—"))}</div>
+        </div>
+      </div>`;
+
+    // ---------------------------------------------------------------- type-ahead suggestions
+    let suggestTimer, suggestAbort, suggestItems = [], active = -1;
+
+    function closeSuggest() {
+      suggestList.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      active = -1;
+    }
+
+    function highlight(i) {
+      active = i;
+      [...suggestList.querySelectorAll("li[data-id]")].forEach((li, n) => li.setAttribute("aria-selected", n === i));
+      if (i >= 0) input.setAttribute("aria-activedescendant", `sg-${i}`);
+    }
+
+    function renderSuggest(items, q) {
+      suggestItems = items;
+      active = -1;
+      suggestList.innerHTML = items.length
+        ? items.map((m, i) => `
+            <li id="sg-${i}" role="option" data-id="${esc(m.id)}" aria-selected="false">
+              ${m.poster ? `<img src="${esc(m.poster)}" alt="" loading="lazy">` : `<span class="ph"></span>`}
+              <div><div class="t">${esc(m.title)}</div>
+                   <div class="s">${[m.year, m.director].filter(Boolean).map(esc).join(" · ") || "&nbsp;"}</div></div>
+            </li>`).join("") + `<li class="hint" aria-hidden="true">Press Enter to see all results for “${esc(q)}”</li>`
+        : `<li class="hint">No suggestions — press Enter to search</li>`;
+      suggestList.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+    }
+
+    input.addEventListener("input", () => {
+      clearTimeout(suggestTimer);
+      suggestAbort?.abort();
+      const q = input.value.trim();
+      if (q.length < 2) return closeSuggest();
+      suggestTimer = setTimeout(async () => {
+        suggestAbort = new AbortController();
+        try {
+          const data = await getJSON(`${API}/suggest?query=${encodeURIComponent(q)}`, suggestAbort.signal);
+          if (input.value.trim() === q && document.activeElement === input) renderSuggest(data.results, q);
+        } catch (err) {
+          if (err.name !== "AbortError") closeSuggest();
+        }
+      }, 250); // wait until the user pauses typing
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (suggestList.hidden || !suggestItems.length) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); highlight((active + 1) % suggestItems.length); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); highlight(active <= 0 ? suggestItems.length - 1 : active - 1); }
+      else if (e.key === "Escape") { closeSuggest(); }
+      else if (e.key === "Enter" && active >= 0) {
+        e.preventDefault();
+        const m = suggestItems[active];
+        closeSuggest();
+        openDetails(m.id);
+      }
+    });
+
+    // mousedown (not click) so it fires before the input loses focus
+    suggestList.addEventListener("mousedown", (e) => {
+      const li = e.target.closest("li[data-id]");
+      if (!li) return;
+      e.preventDefault();
+      closeSuggest();
+      openDetails(li.dataset.id);
+    });
+    input.addEventListener("blur", () => setTimeout(closeSuggest, 100));
+
+    // ---------------------------------------------------------------- full search with "Load more"
+    let lastQuery = "", page = 1, shown = 0;
+
+    async function runSearch(q, nextPage = 1) {
+      if (nextPage === 1) { results.innerHTML = ""; shown = 0; }
+      moreBtn.hidden = true;
+      setStatus(nextPage === 1 ? "Searching…" : "Loading more…");
+      try {
+        const data = await getJSON(`${API}/search?query=${encodeURIComponent(q)}&page=${nextPage}`);
+        if (q !== lastQuery) return; // a newer search started meanwhile
+        page = nextPage;
+        if (!data.results.length && nextPage === 1) return setStatus(`No films found for “${q}”. Try a different spelling.`);
+        results.insertAdjacentHTML("beforeend", data.results.map((m) =>
+          card(m, [m.year || "—", m.director].filter(Boolean).join(" · "))).join(""));
+        shown += data.results.length;
+        setStatus(`Showing ${shown} of ${data.total} result${data.total === 1 ? "" : "s"} — click a film for details & trailer`);
+        moreBtn.hidden = !data.has_more;
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    }
+
+    $("searchForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      clearTimeout(suggestTimer);
+      suggestAbort?.abort();
+      closeSuggest();
+      const q = input.value.trim();
+      if (!q) { results.innerHTML = ""; moreBtn.hidden = true; return setStatus("Please enter a film title.", true); }
+      lastQuery = q;
+      runSearch(q, 1);
+    });
+    moreBtn.addEventListener("click", () => runSearch(lastQuery, page + 1));
+
+    // Any poster card (results or suggestion rows) opens the film's details
+    document.addEventListener("click", (e) => {
+      const c = e.target.closest(".card");
+      if (c) openDetails(c.dataset.id);
+    });
+    document.addEventListener("keydown", (e) => {
+      const c = e.target.closest?.(".card");
+      if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDetails(c.dataset.id); }
+    });
+
+    // ---------------------------------------------------------------- film details
+    let detailToken = 0;
+
+    async function openDetails(id) {
+      const token = ++detailToken;
+      detailBody.innerHTML = `<p class="status" style="padding:40px">Loading…</p>`;
+      if (!dialog.open) dialog.showModal();
+      dialog.scrollTop = 0;
+      try {
+        const m = await getJSON(`${API}/movie/${encodeURIComponent(id)}`);
+        if (token !== detailToken) return;
+        renderDetails(m);
+        loadSuggestions(m.id, token);
+      } catch (err) {
+        if (token === detailToken)
+          detailBody.innerHTML = `<p class="status error" style="padding:40px">${esc(err.message)}</p>`;
+      }
+    }
+
+    function renderDetails(m) {
+      const hrs = m.runtime ? `${Math.floor(m.runtime / 60)}h ${m.runtime % 60}m` : null;
+      const date = m.release_date ? new Date(m.release_date + "T00:00:00")
+        .toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
+      const facts = [
+        m.certificate ? `<span class="cert">${esc(m.certificate)}</span>` : null,
+        date ? esc(date) : null,
+        hrs,
+        m.language ? esc(LANGS[m.language] || m.language.toUpperCase()) : null,
+        m.status && m.status !== "Released" ? esc(m.status) : null,
+      ].filter(Boolean).map((f) => `<span>${f}</span>`).join("");
+
+      const a = m.awards;
+      const awards = a.nominations
+        ? (a.oscars ? `Won ${a.oscars} Oscar${a.oscars === 1 ? "" : "s"}. ` : "") +
+          `${a.wins} win${a.wins === 1 ? "" : "s"} from ${a.nominations} nomination${a.nominations === 1 ? "" : "s"}`
+        : null;
+
+      const info = [
+        ["Director", m.directors.join(", ")],
+        ["Writers", m.writers.join(", ")],
+        ["Studio", m.studios.join(", ")],
+        ["Budget", m.budget],
+        ["Box office", m.box_office],
+        ["Awards", awards],
+      ].filter(([, v]) => v).map(([k, v]) => `<div><div class="label">${k}</div><div>${esc(v)}</div></div>`).join("");
+
+      const top = m.trailer_key
+        ? `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${esc(m.trailer_key)}"
+             title="${esc(m.title)} trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`
+        : m.backdrop ? `<img class="backdrop" src="${esc(m.backdrop)}" alt="">` : "";
+
+      const link = (href, label) => href
+        ? `<a href="${esc(href)}" target="_blank" rel="noopener">${label}</a>` : "";
+
+      const cast = m.cast.length ? `
+        <section class="row">
+          <h3>Cast</h3>
+          <div class="scroller">${m.cast.map((c) => `
+            <div class="person">
+              ${c.photo ? `<img src="${esc(c.photo)}" alt="" loading="lazy">` : `<div class="ph"></div>`}
+              <div class="n">${esc(c.name)}</div>
+              ${c.role ? `<div class="r">${esc(c.role)}</div>` : ""}
+            </div>`).join("")}
+          </div>
+        </section>` : "";
+
+      detailBody.innerHTML = `
+        ${top}
+        <div class="detail">
+          <div>${m.poster ? `<img src="${esc(m.poster)}" alt="${esc(m.title)} poster">` : ""}</div>
+          <div>
+            <h2>${esc(m.title)} ${m.year ? `<span style="color:var(--muted);font-weight:400">(${esc(m.year)})</span>` : ""}</h2>
+            ${m.tagline ? `<div class="tagline">${esc(m.tagline)}</div>` : ""}
+            <div class="facts">${facts}</div>
+            <div class="chips">${m.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join("")}</div>
+            <p>${esc(m.overview || "No overview available.")}</p>
+            <div class="info">${info}</div>
+            ${!m.trailer_key ? `<p class="label">No trailer found on TheTVDB.</p>` : ""}
+            <div class="links">
+              ${link(m.trailer_key ? `https://www.youtube.com/watch?v=${m.trailer_key}` : m.links.youtube_search,
+                     m.trailer_key ? "Watch on YouTube" : "Search YouTube")}
+              ${link(m.links.tvdb, "TheTVDB")}
+              ${link(m.links.imdb, "IMDb")}
+              ${link(m.links.wikipedia, "Wikipedia")}
+              ${link(m.links.homepage, "Official site")}
+            </div>
+          </div>
+        </div>
+        ${cast}
+        <div id="suggestions"><p class="status" style="padding:0 20px 20px">Finding films you might like…</p></div>`;
+    }
+
+    // Collection, "You might also like" and "More from the director" rows, loaded after the details
+    async function loadSuggestions(id, token) {
+      const box = () => document.getElementById("suggestions");
+      try {
+        const s = await getJSON(`${API}/movie/${encodeURIComponent(id)}/similar`);
+        if (token !== detailToken || !box()) return;
+        const row = (title, films) => films.length ? `
+          <section class="row"><h3>${esc(title)}</h3>
+            <div class="scroller">${films.map((f) => card(f)).join("")}</div></section>` : "";
+        box().innerHTML =
+          (s.collection ? row(`Also in “${s.collection}”`, s.in_collection) : "") +
+          row("You might also like", s.similar) +
+          (s.director ? row(`More from ${s.director}`, s.by_director) : "");
+      } catch {
+        if (token === detailToken && box()) box().innerHTML = "";
+      }
+    }
+
+    // Closing the dialog removes the iframe so the trailer stops playing.
+    $("closeBtn").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
+    dialog.addEventListener("close", () => { detailToken++; detailBody.innerHTML = ""; });
+  </script>
+</body>
+</html>
